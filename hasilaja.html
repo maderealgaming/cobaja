@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Data Respon & Map</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    crossorigin=""
+  />
+  <style>
+    body, html { margin:0; padding:0; height:100%; }
+    #list {
+      max-height: 30%; overflow-y: auto;
+      padding: 10px; border-bottom: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+    #map { height: 70%; }
+    .item { margin-bottom: 8px; }
+    .item button { margin-left: 8px; }
+    #refresh-btn {
+      position: absolute; top:10px; right:10px;
+      padding:6px 12px; background:white;
+      border:1px solid #ccc; border-radius:4px;
+      cursor:pointer; z-index:1001;
+    }
+  </style>
+</head>
+<body>
+  <button id="refresh-btn">Refresh Data</button>
+  <div id="list"><em>Loading data…</em></div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>
+    const CSV_SRC = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQTX4FcCz4qvkM22onEubBTkGOBIo4lmhccCtoDthtxCDuCVQm1E_Jwtr4u9J2SDb34PQr92_R2Hozg/pub?output=csv';
+    const PROXY   = 'https://api.allorigins.win/raw?url=';
+    const CSV_URL_BASE = CSV_SRC;  // we'll append cache bust param below
+
+    // setup map
+    const map = L.map('map').setView([-6.2, 106.8], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    const markersGroup = L.featureGroup().addTo(map);
+
+    const listEl     = document.getElementById('list');
+    const refreshBtn = document.getElementById('refresh-btn');
+
+    function loadData(){
+      listEl.innerHTML = '<em>Loading data…</em>';
+      markersGroup.clearLayers();
+
+      // paksa fetch versi terbaru
+      const url = PROXY + encodeURIComponent(CSV_URL_BASE + '&t=' + Date.now());
+      fetch(url)
+        .then(r => r.ok ? r.text() : Promise.reject(r.status))
+        .then(csv => {
+          const parsed = Papa.parse(csv, {
+            header: true,
+            skipEmptyLines: true,
+            transformHeader: h => h.trim()
+          });
+          const data   = parsed.data;
+          const fields = parsed.meta.fields;
+          // deteksi header IP apa pun namanya
+          const ipField = fields.find(f =>
+            f.toLowerCase().includes('ip')
+          );
+
+          console.log('Fields:', fields, 'IP field:', ipField);
+
+          listEl.innerHTML = '';
+          data.forEach(row => {
+            const item = document.createElement('div');
+            item.className = 'item';
+
+            // ambil nilai IP jika ada
+            const ipTxt = ipField && row[ipField]
+              ? ` | IP: ${row[ipField]}`
+              : '';
+
+            const txt = document.createTextNode(
+              `${row.Timestamp} – `
+              + `${row.Latitude}, ${row.Longitude} `
+              + `(${row.City}, ${row.Region})`
+              + ipTxt
+            );
+
+            const btn = document.createElement('button');
+            btn.textContent = 'Lihat Map';
+            btn.addEventListener('click', ()=> {
+              markersGroup.clearLayers();
+              const lat = parseFloat(row.Latitude),
+                    lon = parseFloat(row.Longitude);
+              if (!isNaN(lat) && !isNaN(lon)) {
+                const m = L.marker([lat, lon]).addTo(markersGroup);
+                const popup = [
+                  row.Timestamp,
+                  `${row.City}, ${row.Region}`  
+                ];
+                if (ipField && row[ipField]) popup.push(`IP: ${row[ipField]}`);
+                m.bindPopup(popup.join('<br/>')).openPopup();
+                map.setView([lat, lon], 13);
+              }
+            });
+
+            item.appendChild(txt);
+            item.appendChild(btn);
+            listEl.appendChild(item);
+          });
+        })
+        .catch(err => {
+          listEl.textContent = 'Error load CSV: ' + err;
+        });
+    }
+
+    // initial & on-click
+    loadData();
+    refreshBtn.addEventListener('click', loadData);
+  </script>
+</body>
+</html>
